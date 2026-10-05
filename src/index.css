@@ -1092,6 +1092,17 @@ a {
 .alert--warning .alert__icon { color: var(--color-warning); }
 .alert--exceeded .alert__icon { color: var(--color-expense); }
 
+/* Shown above the page when the backend rejects a change */
+.sync-error {
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.sync-error .btn {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
 /* ===== Budget cards ===== */
 .budget-card {
   display: flex;

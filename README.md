@@ -1,6 +1,6 @@
 # Expense Tracker
 
-A React app to track income and expenses, manage categories, set monthly budgets and analyse spending with charts. All data is stored in the browser (localStorage) — no backend needed.
+A React app to track income and expenses, manage categories, set monthly budgets and analyse spending with charts. Data is saved by the Django backend in `expense-tracker-django`; theme and currency stay in the browser.
 
 Built as a React learning project. See **[docs/LEARNING_GUIDE.md](docs/LEARNING_GUIDE.md)** for how everything works.
 
@@ -16,9 +16,19 @@ Built as a React learning project. See **[docs/LEARNING_GUIDE.md](docs/LEARNING_
 
 ## Tech stack
 
-React 19 · React Router 7 · Recharts 3 · Vite · plain CSS with CSS variables
+React 19 · React Router 7 · Recharts 3 · Vite · plain CSS with CSS variables · Django REST Framework backend
 
 ## Run it
+
+Start the backend first (see `expense-tracker-django/README.md`):
+
+```bash
+cd ../expense-tracker-django
+venv\Scripts\activate           # macOS/Linux: source venv/bin/activate
+python manage.py runserver       # http://127.0.0.1:8000
+```
+
+Then, in a second terminal:
 
 ```bash
 npm install
@@ -26,5 +36,7 @@ npm run dev      # http://localhost:5173
 npm run lint     # check code style
 npm run build    # production build in dist/
 ```
+
+The dev server forwards `/api` requests to Django on port 8000 (see `vite.config.js`). To use a backend at another address, set `VITE_API_URL`, e.g. `VITE_API_URL=https://example.com/api`; that server must then allow requests from the app's address (CORS).
 
 Tip: on an empty app, click **Load sample data** on the Dashboard to see 6 months of demo data.

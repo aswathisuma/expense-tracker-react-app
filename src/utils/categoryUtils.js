@@ -1,4 +1,3 @@
-import { CATEGORY_TYPES } from "../constants/categories";
 import { TRANSACTION_TYPES } from "../constants/transactions";
 
 const EMPTY_USAGE = { count: 0, expenseTotal: 0, incomeTotal: 0, types: new Set() };
@@ -54,27 +53,4 @@ export function getReplacementCategories(categories, categoryToDelete, usage) {
     (category) =>
       category.id !== categoryToDelete.id && isCategoryTypeCompatible(category.type, usage.types)
   );
-}
-
-// Adds any default categories that are missing (matched by name).
-export function mergeMissingCategories(categories, defaultCategories) {
-  const existingNames = new Set(categories.map((category) => category.name.toLowerCase()));
-  const missing = defaultCategories.filter(
-    (category) => !existingNames.has(category.name.toLowerCase())
-  );
-  return [...categories, ...missing];
-}
-
-function isValidCategory(value) {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof value.id === "string" &&
-    typeof value.name === "string" &&
-    CATEGORY_TYPES.includes(value.type)
-  );
-}
-
-export function isValidCategoryList(value) {
-  return Array.isArray(value) && value.length > 0 && value.every(isValidCategory);
 }

@@ -72,7 +72,7 @@ function Settings() {
         <section className="card">
           <h2 className="card__title">Data</h2>
           <p className="text-muted settings-data-summary">
-            {transactions.length} transactions and {categories.length} categories are saved in this browser.
+            {transactions.length} transactions and {categories.length} categories are saved on the server.
           </p>
           <div className="settings-row">
             <div>
@@ -112,11 +112,11 @@ function Settings() {
             </div>
             <div className="details-list__row">
               <dt>Built with</dt>
-              <dd>React, React Router, Recharts</dd>
+              <dd>React, React Router, Recharts, Django REST Framework</dd>
             </div>
             <div className="details-list__row">
               <dt>Storage</dt>
-              <dd>Your browser&apos;s localStorage (nothing is sent to a server)</dd>
+              <dd>Django backend (theme and currency stay in this browser)</dd>
             </div>
           </dl>
         </section>

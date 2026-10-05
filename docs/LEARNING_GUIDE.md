@@ -22,10 +22,10 @@ src/
 │   └── dashboard/      BudgetSummary
 ├── context/            *Context.js (createContext) + *Provider.jsx (state + actions)
 ├── hooks/              useLocalStorage, useExpenses, useTheme, useSettings, useCurrency
-├── services/           storageService.js — the ONLY code that touches localStorage
+├── services/           api.js — the ONLY code that talks to the Django backend
+│                       storageService.js — the ONLY code that touches localStorage (theme, currency)
 ├── utils/              Pure functions: calculations, filters, validation, formatting
-├── constants/          Fixed values: payment methods, storage keys, sort options…
-└── data/               Default categories + sample data generator
+└── constants/          Fixed values: payment methods, storage keys, sort options…
 ```
 
 ### Changes from the originally suggested structure (and why)
@@ -33,7 +33,7 @@ src/
 | Change | Why |
 |---|---|
 | `components/` split into feature folders | A flat folder with 35+ files is hard to navigate. |
-| `services/storageService.js` added | One place to swap localStorage for a Django API later. |
+| `services/` added | One place for all reading and saving: `api.js` for the Django backend, `storageService.js` for localStorage. |
 | `constants/` added | Values like payment methods are typed once, never repeated as strings. |
 | Context split into `XContext.js` + `XProvider.jsx` + `hooks/useX.js` | Vite's Fast Refresh (and its ESLint rule) requires a `.jsx` file to export only components. |
 | `SettingsContext` added | Currency is a user preference used on many pages, like the theme. |
@@ -77,7 +77,7 @@ src/
 | Phase | What was added | Key files |
 |---|---|---|
 | 1. Setup | Routing, layout, sidebar/mobile nav, theme foundation | `App.jsx`, `components/layout/*`, `ThemeProvider.jsx` |
-| 2. Transactions | Add/edit/delete/view, validation, localStorage | `ExpenseProvider.jsx`, `useLocalStorage.js`, `storageService.js`, `TransactionForm.jsx`, `Modal.jsx` |
+| 2. Transactions | Add/edit/delete/view, validation, saving | `ExpenseProvider.jsx`, `api.js`, `TransactionForm.jsx`, `Modal.jsx` |
 | 3. Dashboard | Totals, month spending, budget summary, recent list | `utils/calculations.js`, `pages/Dashboard.jsx`, `SummaryCard.jsx` |
 | 4. Search & filters | Search, type/category/payment/date filters, 4 sorts | `utils/filterUtils.js`, `FilterBar.jsx`, `pages/Transactions.jsx` |
 | 5. Categories & budgets | Category CRUD with safe delete, monthly + category budgets, warnings | `pages/Categories.jsx`, `DeleteCategoryDialog.jsx`, `pages/Budgets.jsx`, `utils/budgetUtils.js` |
@@ -144,7 +144,7 @@ Balance, totals, remaining budget, chart data, the filtered list: all **derived*
 main.jsx
 └─ <ThemeProvider>            value: { theme, toggleTheme }
    └─ <SettingsProvider>      value: { settings, updateSettings, resetSettings }
-      └─ <ExpenseProvider>    value: { transactions, categories, budgets, add/update/delete… }
+      └─ <ExpenseProvider>    value: { transactions, categories, budgets, status, add/update/delete… }
          └─ <App />
 ```
 
@@ -158,31 +158,44 @@ Components never call `setTransactions` directly — they call `addTransaction(f
 
 ---
 
-## 6. LocalStorage persistence
+## 6. Saving data
+
+Transactions, categories and budgets are saved in the **Django backend** (`expense-tracker-django`). Theme and currency are device preferences, so they stay in localStorage.
+
+### Financial data: the Django API
 
 ```text
-Component ─► useExpenses().addTransaction() ─► setTransactions()      (React state)
-                                                      │
-                               useLocalStorage's useEffect sees the change
-                                                      ▼
-                                storageService.writeToStorage(key, value)  ─► localStorage
+App starts ─► ExpenseProvider's useEffect ─► api.fetchAppData() ─► GET /api/data/ ─► React state
+
+Component ─► useExpenses().addTransaction() ─► setTransactions()            (screen updates at once)
+                                           └─► api.createTransaction() ─► POST /api/transactions/
 ```
 
-- **Saving** — `useLocalStorage` has a `useEffect` with `[key, value]` dependencies. Every time the value changes, it is written with `JSON.stringify`.
-- **Loading** — on the very first render, `useState(() => readFromStorage(…))` reads and `JSON.parse`s the stored value once.
-- **Updates** — components update React state only; saving happens automatically as a side effect.
-- **Persistence** — localStorage survives refreshes and browser restarts (per browser, per site).
-- **Safety** — `readFromStorage` returns the default value when the key is missing, when `JSON.parse` throws (corrupted text), or when a validator (`isValidTransactionList`, `isValidBudgets`…) rejects the shape. Writing is wrapped in `try/catch` for full/blocked storage.
+- **Loading** — `ExpenseProvider` fetches everything once in a `useEffect` and exposes `status` (`"loading"`, `"ready"` or `"error"`). `Layout` shows a `<Loader />` or an error message until the data is ready, so pages never render without it.
+- **Optimistic updates** — an action changes React state first and sends the request in the background, so components stay as simple as before (no `await`, no "saving…" state). This works because the React app creates each new `id` itself (`generateId()`) and sends it to Django.
+- **When saving fails** — `syncInBackground` stores the error message (shown as a banner by `Layout`) and reloads the real data from the server, which undoes the change on screen.
+- **Order** — `api.js` sends changes one at a time, in the order they were made.
+- **The proxy** — `vite.config.js` forwards `/api` to `http://127.0.0.1:8000`, so the browser talks to one address and no CORS setup is needed.
+
+| Request | What it does |
+|---|---|
+| `GET /api/data/` | `{ transactions, categories, budgets }` in one response |
+| `DELETE /api/data/` | Clear everything, restore the default categories |
+| `POST /api/data/sample/` | Replace transactions and budgets with 6 months of demo data |
+| `POST /api/transactions/`, `PUT`/`DELETE /api/transactions/<id>/` | `{ id, type, amount, category, date, paymentMethod, description, createdAt }` |
+| `POST /api/categories/`, `PUT`/`DELETE /api/categories/<id>/` | `{ id, name, type: "expense" \| "income" \| "both" }`. Deleting a used category needs `?replacement=<name>` |
+| `PATCH /api/budgets/` | `{ monthlyLimit: 40000, categoryLimits: { "cat-food": 6000 } }`; send only what changed, 0 removes a limit |
+
+Budgets are keyed by **category id**, so renaming a category keeps its budget. Transactions show the category **name**: Django stores a foreign key, so a rename reaches every transaction automatically on the server, and `updateCategory` copies it into React state so the screen matches.
+
+### Preferences: localStorage
+
+`useLocalStorage` works like `useState`, but reads the value with `readFromStorage` on the first render and writes it back in a `useEffect` whenever it changes. `readFromStorage` returns the default when the key is missing, the text is corrupted, or a validator rejects the shape.
 
 | Key | Contents |
 |---|---|
-| `expense-tracker:transactions` | `[{ id, type, amount, category, date, paymentMethod, description, createdAt }]` |
-| `expense-tracker:categories` | `[{ id, name, type: "expense" \| "income" \| "both" }]` |
-| `expense-tracker:budgets` | `{ monthlyLimit: 40000, categoryLimits: { "cat-food": 6000 } }` |
 | `expense-tracker:settings` | `{ currency: "INR" }` |
 | `expense-tracker:theme` | `"light"` or `"dark"` |
-
-Budgets are keyed by **category id**, so renaming a category keeps its budget. Transactions store the category **name** (as the spec's data model shows), so a rename is copied into transactions by `updateCategory`.
 
 ---
 
@@ -219,88 +232,21 @@ Charts never read raw transactions. Pure functions in `utils/calculations.js` tu
 
 ---
 
-## 9. Future Django integration
-
-Target architecture:
+## 9. Django integration: what is left
 
 ```text
-React  ──fetch/JSON──►  Django REST Framework  ──ORM──►  PostgreSQL
+React  ──fetch/JSON──►  Django REST Framework  ──ORM──►  SQLite
 ```
 
-### What stays the same
-All of `components/`, `pages/`, `utils/` (calculations, filters, formatters, validation), `constants/`. Components only know `useExpenses()`; they don't care where data comes from.
+The backend is in place (see section 6). Good next steps:
 
-### What changes
+1. **Forms that wait for the server** — make the actions `async`, `await` them in the forms, disable the submit button while saving and show the server's field errors. This replaces the optimistic updates, and ids and timestamps can then come from Django alone.
+2. **Authentication** — add login (e.g. JWT via `djangorestframework-simplejwt`), an `AuthContext` and a protected route wrapper. Give each model a `user` foreign key so everyone sees only their own data (`Transaction.objects.filter(user=request.user)`). Until then, anyone who can reach the server can change the data.
+3. **Heavy reports on the server** — e.g. `GET /api/reports/monthly-totals/?months=12` using Django's `TruncMonth` + `Sum`. The chart components stay the same because the response has the same shape.
+4. **Settings on the server** — move the currency to a user profile endpoint so it follows you between devices.
+5. **PostgreSQL** — swap `DATABASES` in Django's `settings.py` before deploying.
 
-1. **`services/` becomes an API client** (e.g. `services/api.js`):
-   ```js
-   const API_URL = import.meta.env.VITE_API_URL;
-
-   export async function fetchTransactions() {
-     const response = await fetch(`${API_URL}/transactions/`, { headers: authHeaders() });
-     if (!response.ok) throw new Error("Could not load transactions");
-     return response.json();
-   }
-   export async function createTransaction(data) { /* POST */ }
-   export async function updateTransaction(id, data) { /* PATCH */ }
-   export async function deleteTransaction(id) { /* DELETE */ }
-   ```
-
-2. **`ExpenseProvider` loads data asynchronously** instead of `useLocalStorage`:
-   ```js
-   const [transactions, setTransactions] = useState([]);
-   const [status, setStatus] = useState("loading"); // "loading" | "ready" | "error"
-
-   useEffect(() => {
-     fetchTransactions()
-       .then((data) => { setTransactions(data); setStatus("ready"); })
-       .catch(() => setStatus("error"));
-   }, []);
-
-   const addTransaction = useCallback(async (formValues) => {
-     const saved = await api.createTransaction(toTransactionFields(formValues));
-     setTransactions((previous) => [saved, ...previous]); // server returns id + createdAt
-   }, []);
-   ```
-   Expose `status` so pages can show `<Loader />` / an error `EmptyState` — the loading and error UI already exists.
-
-3. **Forms await the action** and show server errors (e.g. `catch` → `setErrors(serverErrors)`); disable the submit button while saving.
-
-4. **IDs and timestamps** come from Django (`id`, `created_at`) — `generateId()` and `createdAt` generation are removed from `transactionUtils.js`.
-
-5. **Categories become a foreign key.** In Django, `Transaction.category = models.ForeignKey(Category, on_delete=models.PROTECT)`. The frontend stores `categoryId`; renames no longer need to touch transactions, and `PROTECT` enforces the "can't delete a used category" rule on the server.
-
-6. **Authentication** — add login (e.g. JWT via `djangorestframework-simplejwt`), an `AuthContext`, and a protected route wrapper. Each user sees only their own data (`queryset = Transaction.objects.filter(user=request.user)`).
-
-7. **Heavy reports can move server-side** — e.g. `GET /api/reports/monthly-totals/?months=12` using Django's `TruncMonth` + `Sum` aggregation. The chart components stay the same because the response has the same shape.
-
-8. **Settings/theme** can stay in localStorage (device preference) or move to a user profile endpoint.
-
-Suggested Django models:
-
-```python
-class Category(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    name = models.CharField(max_length=30)
-    type = models.CharField(max_length=10, choices=[("expense", "Expense"), ("income", "Income"), ("both", "Both")])
-
-class Transaction(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    type = models.CharField(max_length=10, choices=[("expense", "Expense"), ("income", "Income")])
-    amount = models.DecimalField(max_digits=12, decimal_places=2)
-    category = models.ForeignKey(Category, on_delete=models.PROTECT)
-    date = models.DateField()
-    payment_method = models.CharField(max_length=20)
-    description = models.CharField(max_length=100, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-class Budget(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    category = models.ForeignKey(Category, null=True, blank=True, on_delete=models.CASCADE)  # null = overall monthly budget
-    monthly_limit = models.DecimalField(max_digits=12, decimal_places=2)
-```
-
-Note: use `DecimalField` for money on the server — floating point numbers can't represent values like 0.1 exactly. (The frontend rounds to paise in `calculations.js` for the same reason.)
+Note: Django uses `DecimalField` for money, because floating point numbers can't represent values like 0.1 exactly. (The frontend rounds to paise in `calculations.js` for the same reason.)
 
 ---
 

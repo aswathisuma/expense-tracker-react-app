@@ -42,18 +42,3 @@ export function removeCategoryLimit(budgets, categoryId) {
     ),
   };
 }
-
-function isPositiveNumber(value) {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0;
-}
-
-export function isValidBudgets(value) {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    isPositiveNumber(value.monthlyLimit) &&
-    typeof value.categoryLimits === "object" &&
-    value.categoryLimits !== null &&
-    Object.values(value.categoryLimits).every(isPositiveNumber)
-  );
-}

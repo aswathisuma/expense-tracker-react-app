@@ -1,5 +1,5 @@
 // The ONLY file that talks to localStorage directly.
-// When we move to Django, this is the layer that gets replaced.
+// Used for device preferences (theme, currency). Financial data goes through api.js.
 
 export function readFromStorage(key, fallbackValue, isValid = () => true) {
   try {

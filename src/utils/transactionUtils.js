@@ -1,4 +1,3 @@
-import { TRANSACTION_TYPES } from "../constants/transactions";
 import { generateId } from "./generateId";
 
 // Form inputs give us strings. This converts them into clean stored values.
@@ -38,25 +37,4 @@ const COMPARATORS = {
 export function sortTransactions(transactions, sortBy = "newest") {
   const compare = COMPARATORS[sortBy] ?? compareNewest;
   return [...transactions].sort(compare);
-}
-
-// Used to reject corrupted localStorage data.
-function isValidTransaction(value) {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof value.id === "string" &&
-    Object.values(TRANSACTION_TYPES).includes(value.type) &&
-    typeof value.amount === "number" &&
-    value.amount > 0 &&
-    typeof value.category === "string" &&
-    typeof value.date === "string" &&
-    typeof value.paymentMethod === "string" &&
-    typeof value.description === "string" &&
-    typeof value.createdAt === "string"
-  );
-}
-
-export function isValidTransactionList(value) {
-  return Array.isArray(value) && value.every(isValidTransaction);
 }
