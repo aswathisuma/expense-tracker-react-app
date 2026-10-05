@@ -20,16 +20,6 @@ React 19 · React Router 7 · Recharts 3 · Vite · plain CSS with CSS variables
 
 ## Run it
 
-Start the backend first (see `expense-tracker-django/README.md`):
-
-```bash
-cd ../expense-tracker-django
-venv\Scripts\activate           # macOS/Linux: source venv/bin/activate
-python manage.py runserver       # http://127.0.0.1:8000
-```
-
-Then, in a second terminal:
-
 ```bash
 npm install
 npm run dev      # http://localhost:5173
@@ -37,6 +27,18 @@ npm run lint     # check code style
 npm run build    # production build in dist/
 ```
 
-The dev server forwards `/api` requests to Django on port 8000 (see `vite.config.js`). To use a backend at another address, set `VITE_API_URL`, e.g. `VITE_API_URL=https://example.com/api`; that server must then allow requests from the app's address (CORS).
+### Which backend it uses
+
+The dev server forwards every `/api` request to the Django backend named by `BACKEND_URL` in the `.env` file (see `vite.config.js`). It is set to the hosted backend, `https://aswathiashoke.pythonanywhere.com`, so nothing else needs to be running.
+
+To use Django on your own PC instead, create a file named `.env.local` next to `.env`:
+
+```bash
+BACKEND_URL=http://127.0.0.1:8000
+```
+
+then start Django (`python manage.py runserver` in `expense-tracker-django`) and restart `npm run dev`.
+
+This forwarding only exists in `npm run dev` and `npm run preview`. If you host the built app (`dist/`) on another site, build it with `VITE_API_URL=https://aswathiashoke.pythonanywhere.com/api` and allow that site's address on the Django side (CORS).
 
 Tip: on an empty app, click **Load sample data** on the Dashboard to see 6 months of demo data.
